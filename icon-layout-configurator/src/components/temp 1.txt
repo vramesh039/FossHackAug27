@@ -1,0 +1,274 @@
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import './Layout.scss';
+import IconsPanel from './IconsPanel';
+import { saveImage, loadImage } from '../utils/imageUtils';
+
+interface DroppedIcon {
+  id: string;
+  x: number;
+  y: number;
+  image: string;
+}
+
+interface SavedConfig {
+  backgroundImageName: string | null;
+  droppedIcons: DroppedIcon[];
+  imageSize: { width: number; height: number } | null;
+}
+
+const Layout: React.FC = () => {
+  const [isConfigOpen, setIsConfigOpen] = useState(false);
+  const [showIcons, setShowIcons] = useState(false);
+  const [backgroundImage, setBackgroundImage] = useState<string | null>(null);
+  const [backgroundImageName, setBackgroundImageName] = useState<string | null>(null);
+  const [droppedIcons, setDroppedIcons] = useState<DroppedIcon[]>([]);
+  const [imageSize, setImageSize] = useState<{ width: number; height: number } | null>(null);
+  const [backgroundSize, setBackgroundSize] = useState<{ width: number; height: number } | null>(null);
+  const [iconsPanelPosition, setIconsPanelPosition] = useState({ x: 0, y: 0 });
+  const [isDraggingPanel, setIsDraggingPanel] = useState(false);
+  const layoutRef = useRef<HTMLDivElement>(null);
+  const iconsPanelRef = useRef<HTMLDivElement>(null);
+
+  const toggleConfig = useCallback(() => {
+    setIsConfigOpen(prev => !prev);
+  }, []);
+
+  const handleImageSelect = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      try {
+        const imageName = await saveImage(file);
+        setBackgroundImageName(imageName);
+        const imageUrl = await loadImage(imageName);
+        setBackgroundImage(imageUrl);
+      } catch (error) {
+        console.error('Failed to save or load image:', error);
+      }
+    }
+  }, []);
+
+  const handleShowIcons = useCallback(() => {
+    setShowIcons(true);
+  }, []);
+
+  const handleCloseIcons = useCallback(() => {
+    setShowIcons(false);
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const iconId = e.dataTransfer.getData('text');
+    const iconImage = e.dataTransfer.getData('image');
+    const rect = layoutRef.current!.getBoundingClientRect();
+
+    const x = (e.clientX - rect.left) / backgroundSize!.width;
+    const y = (e.clientY - rect.top) / backgroundSize!.height;
+
+    setDroppedIcons(prev => [...prev, { id: iconId, x, y, image: iconImage }]);
+  }, [backgroundSize]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
+
+  const handleSave = useCallback(() => {
+    const dataToSave: SavedConfig = {
+      backgroundImageName,
+      droppedIcons,
+      imageSize
+    };
+    const jsonString = JSON.stringify(dataToSave);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = 'layout_config.json';
+    link.click();
+    URL.revokeObjectURL(url);
+  }, [backgroundImageName, droppedIcons, imageSize]);
+
+  const updateBackgroundSize = useCallback(() => {
+    if (backgroundImage && layoutRef.current) {
+      const img = new Image();
+      img.src = backgroundImage;
+      img.onload = () => {
+        const layout = layoutRef.current!;
+        const layoutWidth = layout.clientWidth;
+        const layoutHeight = layout.clientHeight;
+        const imageAspectRatio = img.width / img.height;
+        const layoutAspectRatio = layoutWidth / layoutHeight;
+
+        let bgWidth, bgHeight;
+        if (imageAspectRatio > layoutAspectRatio) {
+          bgWidth = layoutWidth;
+          bgHeight = layoutWidth / imageAspectRatio;
+        } else {
+          bgHeight = layoutHeight;
+          bgWidth = layoutHeight * imageAspectRatio;
+        }
+
+        setBackgroundSize({ width: bgWidth, height: bgHeight });
+      };
+    }
+  }, [backgroundImage]);
+
+  const getIconStyle = useCallback((icon: DroppedIcon) => {
+    if (backgroundSize && layoutRef.current) {
+      const layoutRect = layoutRef.current.getBoundingClientRect();
+      const iconSize = 40; // Fixed size for icons
+      const left = icon.x * backgroundSize.width;
+      const top = icon.y * backgroundSize.height;
+      return {
+        left: `${left}px`,
+        top: `${top}px`,
+        transform: 'translate(-50%, -50%)',
+        width: `${iconSize}px`,
+        height: `${iconSize}px`,
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        backgroundColor: 'white',
+        border: '1px solid #007bff',
+      };
+    }
+    return {};
+  }, [backgroundSize]);
+
+  useEffect(() => {
+    updateBackgroundSize();
+    window.addEventListener('resize', updateBackgroundSize);
+    return () => window.removeEventListener('resize', updateBackgroundSize);
+  }, [updateBackgroundSize]);
+
+  useEffect(() => {
+    const loadSavedConfig = async () => {
+      try {
+        const response = await fetch('layout_config.json');
+        if (response.ok) {
+          const savedConfig: SavedConfig = await response.json();
+          setBackgroundImageName(savedConfig.backgroundImageName);
+          if (savedConfig.backgroundImageName) {
+            const imageUrl = await loadImage(savedConfig.backgroundImageName);
+            setBackgroundImage(imageUrl);
+          }
+          setDroppedIcons(savedConfig.droppedIcons);
+          setImageSize(savedConfig.imageSize);
+        }
+      } catch (error) {
+        console.error('Failed to load saved configuration:', error);
+      }
+    };
+
+    loadSavedConfig();
+  }, []);
+
+  useEffect(() => {
+    if (backgroundImage && layoutRef.current) {
+      const img = new Image();
+      img.src = backgroundImage;
+      img.onload = () => {
+        const layout = layoutRef.current!;
+        const layoutAspectRatio = layout.clientWidth / layout.clientHeight;
+        const imageAspectRatio = img.width / img.height;
+
+        let bgWidth, bgHeight;
+        if (imageAspectRatio > layoutAspectRatio) {
+          bgWidth = layout.clientWidth;
+          bgHeight = layout.clientWidth / imageAspectRatio;
+        } else {
+          bgHeight = layout.clientHeight;
+          bgWidth = layout.clientHeight * imageAspectRatio;
+        }
+
+        layout.style.backgroundSize = `${bgWidth}px ${bgHeight}px`;
+        setImageSize({ width: bgWidth, height: bgHeight });
+      };
+    }
+  }, [backgroundImage]);
+
+  const handleDragStart = (e: React.MouseEvent) => {
+    setIsDraggingPanel(true);
+    setIconsPanelPosition({
+      x: e.clientX - iconsPanelRef.current!.offsetLeft,
+      y: e.clientY - iconsPanelRef.current!.offsetTop,
+    });
+  };
+
+  const handleDrag = (e: React.MouseEvent) => {
+    if (isDraggingPanel) {
+      setIconsPanelPosition({
+        x: e.clientX - iconsPanelPosition.x,
+        y: iconsPanelPosition.y,
+      });
+    }
+  };
+
+  const handleDragEnd = () => {
+    setIsDraggingPanel(false);
+  };
+
+  return (
+    <div
+      ref={layoutRef}
+      className="layout"
+      style={{
+        backgroundImage: backgroundImage ? `url(${backgroundImage})` : 'none',
+        backgroundPosition: 'left top',
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: backgroundSize ? `${backgroundSize.width}px ${backgroundSize.height}px` : 'auto'
+      }}
+      onDrop={handleDrop}
+      onDragOver={handleDragOver}
+    >
+      {droppedIcons.map((icon, index) => (
+        <div
+          key={index}
+          className="dropped-icon"
+          style={getIconStyle(icon)}
+        >
+          <img src={icon.image} alt={icon.id} />
+        </div>
+      ))}
+      <button className="open-menu" onClick={toggleConfig}>
+        {isConfigOpen ? 'Close' : 'Open'} Menu
+      </button>
+      {isConfigOpen && (
+        <div className="config-panel">
+          <button onClick={handleShowIcons}>Show droppable icons</button>
+          <label className="select-image-button">
+            Select background image
+            <input 
+              type="file" 
+              accept="image/*" 
+              onChange={handleImageSelect} 
+              style={{ display: 'none' }}
+            />
+          </label>
+          <button onClick={handleSave}>Save</button>
+        </div>
+      )}
+      {showIcons && (
+        <div
+          ref={iconsPanelRef}
+          className="icons-panel"
+          style={{
+            position: 'absolute',
+            top: iconsPanelPosition.y,
+            left: iconsPanelPosition.x,
+            cursor: isDraggingPanel ? 'grabbing' : 'grab',
+          }}
+          onMouseDown={handleDragStart}
+          onMouseMove={handleDrag}
+          onMouseUp={handleDragEnd}
+        >
+          <button onClick={handleCloseIcons} style={{ float: 'right' }}>Close</button>
+          <div className="icons">
+            {/* Add your icons here */}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Layout;

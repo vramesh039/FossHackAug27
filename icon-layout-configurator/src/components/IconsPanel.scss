@@ -1,0 +1,53 @@
+.icons-panel {
+    position: fixed;
+    left: 0;
+    top: 0;
+    width: 200px;
+    height: 100vh;
+    background-color: #f0f0f0;
+    padding: 20px;
+    box-shadow: -2px 0 5px rgba(0, 0, 0, 0.1);
+  
+    .close-button {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: none;
+      border: none;
+      font-size: 20px;
+      cursor: pointer;
+    }
+  
+    .icons-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      margin-top: 20px;
+  
+      .icon {
+        padding: 10px;
+        background-color: #007bff;
+        color: white;
+        text-align: center;
+        cursor: move;
+        user-select: none;
+        display: flex;
+        align-items: center;
+        border-radius: 5px;
+        transition: all 0.3s ease;
+  
+        &:hover {
+          background-color: #0056b3;
+        }
+  
+        .icon-image {
+          font-size: 24px;
+          margin-right: 10px;
+        }
+  
+        .icon-name {
+          font-size: 14px;
+        }
+      }
+    }
+  }
